@@ -10,13 +10,16 @@ app = FastAPI()
 async def query(query: str):
     """Process a query using the MCPClient"""
     client = MCPClient()
+    final_tools=[]
     try:
         with open('mcp_servers.json', 'r') as file:
             data = json.load(file)
         for name, details in data["mcpServers"].items():
             await client.connect_to_server(details)
-        response = await client.process_query(query)
-        return {"response": response}
+            tools = await client.getTools()
+            final_tools.append(tools)
+        result = await client.process_query(query, final_tools)
+        return {"response": result}
     finally:
         await client.cleanup()
 
@@ -28,7 +31,7 @@ async def run_fastapi():
 async def main():
     # Run FastAPI as a task
     task = asyncio.create_task(run_fastapi())
-    await asyncio.sleep(60)  # run for 60 seconds, or any condition
+    await asyncio.sleep(1000)  # run for 60 seconds, or any condition
     task.cancel()
 
 if __name__ == "__main__":

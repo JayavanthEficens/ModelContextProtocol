@@ -1,13 +1,17 @@
-import asyncio
 from typing import Optional
 from contextlib import AsyncExitStack
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-import json
 from openai import OpenAI
 from dotenv import load_dotenv
+
+from langchain_mcp_adapters.tools import load_mcp_tools
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+from langchain_mcp_adapters.client import MultiServerMCPClient
+import os
 
 load_dotenv()  # load environment variables from .env
 
@@ -42,77 +46,16 @@ class MCPClient:
         tools = response.tools
         print("\nConnected to server with tools:", [tool.name for tool in tools])
 
-    async def process_query(self, query: str) -> str:
-        """Process a query using Claude and available tools"""
-        messages = [
-            {
-                "role": "user",
-                "content": query
-            }
-        ]
-
-        response = await self.session.list_tools()
-        available_tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.inputSchema
-                }
-            }
-            for tool in response.tools
-        ]
-
-
-        # Initial Claude API call
-        response = self.openai.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            tools=available_tools,
-             max_tokens=1000
-        )
-
-        # Process response and handle tool calls
-        final_text = []
-
-        choice = response.choices[0]
-        message = choice.message
-        final_text = []
-
-        # If it's a tool call
-        if message.tool_calls:
-            for tool_call in message.tool_calls:
-                tool_name = tool_call.function.name
-                tool_args = tool_call.function.arguments
-
-                # Execute tool call
-                result = await self.session.call_tool(tool_name, json.loads(tool_args))  # Be careful with eval; safer: json.loads
-
-                # Record assistant message + tool result
-                messages.append({
-                    "role": "assistant",
-                    "tool_calls": [tool_call.model_dump()]
-                })
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": result.content
-                })
-
-                # Get follow-up from model after tool response
-                response = self.openai.chat.completions.create(
-                    model="gpt-4o",
-                    messages=messages,
-                    tools=available_tools,
-                    max_tokens=1000
-                )
-                final_text.append(response.choices[0].message.content)
-        else:
-            final_text.append(message.content)
-        print(final_text)
-
-        return "\n".join(map(str, final_text))
+    async def getTools(self):
+        tools = await load_mcp_tools(self.session)
+        return tools
+    
+    async def process_query(self, query: str, available_tools) -> str:
+        final_tools=available_tools[0]+available_tools[1]
+        llm = ChatOpenAI(model="gpt-4o", temperature=0, openai_api_key=os.getenv("OPENAI_API_KEY"))
+        agent = create_react_agent(llm, final_tools)
+        result = await agent.ainvoke({"messages": query})
+        return result
     
     async def chat_loop(self, query):
         """Run an interactive chat loop"""
