@@ -51,7 +51,7 @@ class MCPClient:
         return tools
     
     async def process_query(self, query: str, available_tools) -> str:
-        final_tools=available_tools[0]+available_tools[1]
+        final_tools=available_tools[0]+available_tools[1]+available_tools[2]
         llm = ChatOpenAI(model="gpt-4o", temperature=0, openai_api_key=os.getenv("OPENAI_API_KEY"))
         agent = create_react_agent(llm, final_tools)
         result = await agent.ainvoke({"messages": query})
