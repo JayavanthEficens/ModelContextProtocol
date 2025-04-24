@@ -16,12 +16,7 @@ async def query(query: Input):
     client = MCPClient()
     final_tools=[]
     try:
-        with open('mcp_servers.json', 'r') as file:
-            data = json.load(file)
-        for name, details in data["mcpServers"].items():
-            await client.connect_to_server(details)
-            tools = await client.getTools()
-            final_tools.append(tools)
+        final_tools = await client.connect_to_servers()
         result = await client.process_query(query.query, final_tools)
         return {"response": result}
     finally:

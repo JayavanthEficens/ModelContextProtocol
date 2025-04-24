@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-from langchain_mcp_adapters.client import MultiServerMCPClient
+import json
 import os
 
 load_dotenv()  # load environment variables from .env
@@ -23,12 +23,23 @@ class MCPClient:
         self.openai = OpenAI()
     # methods will go here
 
-    async def connect_to_server(self, config: dict):
+    async def connect_to_servers(self):
         """Connect to an MCP server
 
         Args:
             server_script_path: Path to the server script (.py or .js)
         """
+        tools=[]
+        with open('mcp_servers.json', 'r') as file:
+            config = json.load(file)
+        for name, details in config["mcpServers"].items():
+            await self.connect_to_server(details)
+            server_tools = await load_mcp_tools(self.session)
+            for tool in server_tools:
+                tools.append(tool)
+        return tools
+
+    async def connect_to_server(self, config: dict):
         server_params = StdioServerParameters(
             command=config["command"],
             args=config["args"],
@@ -45,15 +56,10 @@ class MCPClient:
         response = await self.session.list_tools()
         tools = response.tools
         print("\nConnected to server with tools:", [tool.name for tool in tools])
-
-    async def getTools(self):
-        tools = await load_mcp_tools(self.session)
-        return tools
     
     async def process_query(self, query: str, available_tools) -> str:
-        final_tools=available_tools[0]+available_tools[1]+available_tools[2]
         llm = ChatOpenAI(model="gpt-4o", temperature=0, openai_api_key=os.getenv("OPENAI_API_KEY"))
-        agent = create_react_agent(llm, final_tools)
+        agent = create_react_agent(llm, available_tools)
         result = await agent.ainvoke({"messages": query})
         return result
     
